@@ -45,6 +45,8 @@ namespace ClickerByProgram
             this.loopDelayUpDown = new System.Windows.Forms.NumericUpDown();
             this.leftClickLoopButton = new System.Windows.Forms.Button();
             this.rightClickLoopButton = new System.Windows.Forms.Button();
+            this.leftLoopToggleCheckBox = new System.Windows.Forms.CheckBox();
+            this.rightLoopToggleCheckBox = new System.Windows.Forms.CheckBox();
             this.actionsListBox = new System.Windows.Forms.ListBox();
             this.actionsLabel = new System.Windows.Forms.Label();
             this.clearActionsButton = new System.Windows.Forms.Button();
@@ -283,9 +285,31 @@ namespace ClickerByProgram
             this.rightClickLoopButton.Text = "Right Click Loop";
             this.rightClickLoopButton.UseVisualStyleBackColor = true;
             this.rightClickLoopButton.Click += new System.EventHandler(this.OnRightClickLoopButtonClick);
-            // 
+            //
+            // leftLoopToggleCheckBox
+            //
+            this.leftLoopToggleCheckBox.AutoSize = true;
+            this.leftLoopToggleCheckBox.Location = new System.Drawing.Point(20, 188);
+            this.leftLoopToggleCheckBox.Name = "leftLoopToggleCheckBox";
+            this.leftLoopToggleCheckBox.Size = new System.Drawing.Size(156, 19);
+            this.leftLoopToggleCheckBox.TabIndex = 11;
+            this.leftLoopToggleCheckBox.Text = "Follow Start/Stop toggle";
+            this.leftLoopToggleCheckBox.UseVisualStyleBackColor = true;
+            this.leftLoopToggleCheckBox.CheckedChanged += new System.EventHandler(this.OnLoopToggleSyncChanged);
+            //
+            // rightLoopToggleCheckBox
+            //
+            this.rightLoopToggleCheckBox.AutoSize = true;
+            this.rightLoopToggleCheckBox.Location = new System.Drawing.Point(260, 188);
+            this.rightLoopToggleCheckBox.Name = "rightLoopToggleCheckBox";
+            this.rightLoopToggleCheckBox.Size = new System.Drawing.Size(156, 19);
+            this.rightLoopToggleCheckBox.TabIndex = 12;
+            this.rightLoopToggleCheckBox.Text = "Follow Start/Stop toggle";
+            this.rightLoopToggleCheckBox.UseVisualStyleBackColor = true;
+            this.rightLoopToggleCheckBox.CheckedChanged += new System.EventHandler(this.OnLoopToggleSyncChanged);
+            //
             // actionsListBox
-            // 
+            //
             this.actionsListBox.Dock = System.Windows.Forms.DockStyle.Fill;
             this.actionsListBox.FormattingEnabled = true;
             this.actionsListBox.ItemHeight = 15;
@@ -362,6 +386,8 @@ namespace ClickerByProgram
             //
             // executionGroupBox
             //
+            this.executionGroupBox.Controls.Add(this.leftLoopToggleCheckBox);
+            this.executionGroupBox.Controls.Add(this.rightLoopToggleCheckBox);
             this.executionGroupBox.Controls.Add(this.startHotkeyComboBox);
             this.executionGroupBox.Controls.Add(this.stopHotkeyComboBox);
             this.executionGroupBox.Controls.Add(this.toggleHotkeyComboBox);
@@ -375,7 +401,7 @@ namespace ClickerByProgram
             this.executionGroupBox.Controls.Add(this.loopDelayUpDown);
             this.executionGroupBox.Location = new System.Drawing.Point(10, 310);
             this.executionGroupBox.Name = "executionGroupBox";
-            this.executionGroupBox.Size = new System.Drawing.Size(900, 190);
+            this.executionGroupBox.Size = new System.Drawing.Size(900, 210);
             this.executionGroupBox.TabIndex = 18;
             this.executionGroupBox.TabStop = false;
             this.executionGroupBox.Text = "Execution";
@@ -436,5 +462,7 @@ namespace ClickerByProgram
         private System.Windows.Forms.GroupBox executionGroupBox;
         private System.Windows.Forms.Button leftClickLoopButton;
         private System.Windows.Forms.Button rightClickLoopButton;
+        private System.Windows.Forms.CheckBox leftLoopToggleCheckBox;
+        private System.Windows.Forms.CheckBox rightLoopToggleCheckBox;
     }
 }
