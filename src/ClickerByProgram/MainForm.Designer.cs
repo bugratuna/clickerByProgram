@@ -43,6 +43,8 @@ namespace ClickerByProgram
             this.loopCheckBox = new System.Windows.Forms.CheckBox();
             this.loopDelayLabel = new System.Windows.Forms.Label();
             this.loopDelayUpDown = new System.Windows.Forms.NumericUpDown();
+            this.leftClickLoopButton = new System.Windows.Forms.Button();
+            this.rightClickLoopButton = new System.Windows.Forms.Button();
             this.actionsListBox = new System.Windows.Forms.ListBox();
             this.actionsLabel = new System.Windows.Forms.Label();
             this.clearActionsButton = new System.Windows.Forms.Button();
@@ -261,6 +263,26 @@ namespace ClickerByProgram
             0,
             0,
             0});
+            //
+            // leftClickLoopButton
+            //
+            this.leftClickLoopButton.Location = new System.Drawing.Point(20, 150);
+            this.leftClickLoopButton.Name = "leftClickLoopButton";
+            this.leftClickLoopButton.Size = new System.Drawing.Size(220, 32);
+            this.leftClickLoopButton.TabIndex = 9;
+            this.leftClickLoopButton.Text = "Left Click Loop";
+            this.leftClickLoopButton.UseVisualStyleBackColor = true;
+            this.leftClickLoopButton.Click += new System.EventHandler(this.OnLeftClickLoopButtonClick);
+            //
+            // rightClickLoopButton
+            //
+            this.rightClickLoopButton.Location = new System.Drawing.Point(260, 150);
+            this.rightClickLoopButton.Name = "rightClickLoopButton";
+            this.rightClickLoopButton.Size = new System.Drawing.Size(220, 32);
+            this.rightClickLoopButton.TabIndex = 10;
+            this.rightClickLoopButton.Text = "Right Click Loop";
+            this.rightClickLoopButton.UseVisualStyleBackColor = true;
+            this.rightClickLoopButton.Click += new System.EventHandler(this.OnRightClickLoopButtonClick);
             // 
             // actionsListBox
             // 
@@ -315,7 +337,7 @@ namespace ClickerByProgram
             //
             this.mainSplitContainer.Panel2.Controls.Add(this.actionsListBox);
             this.mainSplitContainer.Size = new System.Drawing.Size(920, 640);
-            this.mainSplitContainer.SplitterDistance = 460;
+            this.mainSplitContainer.SplitterDistance = 520;
             this.mainSplitContainer.TabIndex = 16;
             //
             // recordingGroupBox
@@ -343,6 +365,8 @@ namespace ClickerByProgram
             this.executionGroupBox.Controls.Add(this.startHotkeyComboBox);
             this.executionGroupBox.Controls.Add(this.stopHotkeyComboBox);
             this.executionGroupBox.Controls.Add(this.toggleHotkeyComboBox);
+            this.executionGroupBox.Controls.Add(this.leftClickLoopButton);
+            this.executionGroupBox.Controls.Add(this.rightClickLoopButton);
             this.executionGroupBox.Controls.Add(this.startButton);
             this.executionGroupBox.Controls.Add(this.stopButton);
             this.executionGroupBox.Controls.Add(this.toggleButton);
@@ -351,7 +375,7 @@ namespace ClickerByProgram
             this.executionGroupBox.Controls.Add(this.loopDelayUpDown);
             this.executionGroupBox.Location = new System.Drawing.Point(10, 310);
             this.executionGroupBox.Name = "executionGroupBox";
-            this.executionGroupBox.Size = new System.Drawing.Size(900, 150);
+            this.executionGroupBox.Size = new System.Drawing.Size(900, 190);
             this.executionGroupBox.TabIndex = 18;
             this.executionGroupBox.TabStop = false;
             this.executionGroupBox.Text = "Execution";
@@ -410,5 +434,7 @@ namespace ClickerByProgram
         private System.Windows.Forms.SplitContainer mainSplitContainer;
         private System.Windows.Forms.GroupBox recordingGroupBox;
         private System.Windows.Forms.GroupBox executionGroupBox;
+        private System.Windows.Forms.Button leftClickLoopButton;
+        private System.Windows.Forms.Button rightClickLoopButton;
     }
 }

@@ -106,6 +106,34 @@ internal static class NativeMethods
         PostMessage(windowHandle, message, new IntPtr(wParam), lParam);
     }
 
+    public static bool TryGetWindowCenter(IntPtr windowHandle, out Point center)
+    {
+        if (windowHandle == IntPtr.Zero)
+        {
+            center = Point.Empty;
+            return false;
+        }
+
+        if (!GetClientRect(windowHandle, out var rect))
+        {
+            center = Point.Empty;
+            return false;
+        }
+
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+        var clientPoint = new Point(rect.Left + width / 2, rect.Top + height / 2);
+
+        if (!ClientToScreen(windowHandle, ref clientPoint))
+        {
+            center = Point.Empty;
+            return false;
+        }
+
+        center = clientPoint;
+        return true;
+    }
+
     private static uint GetMouseButtonMessage(MouseButton button, bool buttonDown)
     {
         return button switch
@@ -182,6 +210,12 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool ScreenToClient(IntPtr hWnd, ref Point lpPoint);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool ClientToScreen(IntPtr hWnd, ref Point lpPoint);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetClientRect(IntPtr hWnd, out Rect lpRect);
+
     [DllImport("user32.dll", SetLastError = false)]
     private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
@@ -209,6 +243,15 @@ internal static class NativeMethods
         public int Flags;
         public int Time;
         public IntPtr DwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
     }
 
     private static class Kernel32

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -28,9 +29,22 @@ public partial class MainForm : Form
     private bool _suppressScriptPreviewUpdate;
     private bool _suppressHotkeySelectionEvents;
 
+    private CancellationTokenSource? _leftClickLoopCancellationTokenSource;
+    private Task? _leftClickLoopTask;
+    private bool _isLeftClickLoopActive;
+
+    private CancellationTokenSource? _rightClickLoopCancellationTokenSource;
+    private Task? _rightClickLoopTask;
+    private bool _isRightClickLoopActive;
+
     private Keys _startHotkey = Keys.F7;
     private Keys _stopHotkey = Keys.F8;
     private Keys _toggleHotkey = Keys.F9;
+
+    private const int MouseLoopIntervalMilliseconds = 150;
+    private const int MouseLoopPressDurationMilliseconds = 50;
+
+    private bool IsAnyAutomationRunning => _isRunning || _isLeftClickLoopActive || _isRightClickLoopActive;
 
     private static readonly Keys[] HotkeyOptions =
     {
@@ -306,14 +320,14 @@ public partial class MainForm : Form
 
     private async void OnStopClick(object? sender, EventArgs e)
     {
-        await StopPlaybackAsync();
+        await StopAllAutomationAsync();
     }
 
     private async void OnToggleClick(object? sender, EventArgs e)
     {
-        if (_isRunning)
+        if (IsAnyAutomationRunning)
         {
-            await StopPlaybackAsync();
+            await StopAllAutomationAsync();
         }
         else
         {
@@ -360,9 +374,193 @@ public partial class MainForm : Form
         }
     }
 
+    private async void OnLeftClickLoopButtonClick(object? sender, EventArgs e)
+    {
+        if (_isLeftClickLoopActive)
+        {
+            await StopMouseLoopAsync(ref _isLeftClickLoopActive, ref _leftClickLoopCancellationTokenSource,
+                ref _leftClickLoopTask);
+        }
+        else
+        {
+            StartMouseLoop(MouseButton.Left, ref _isLeftClickLoopActive, ref _leftClickLoopCancellationTokenSource,
+                ref _leftClickLoopTask);
+        }
+    }
+
+    private async void OnRightClickLoopButtonClick(object? sender, EventArgs e)
+    {
+        if (_isRightClickLoopActive)
+        {
+            await StopMouseLoopAsync(ref _isRightClickLoopActive, ref _rightClickLoopCancellationTokenSource,
+                ref _rightClickLoopTask);
+        }
+        else
+        {
+            StartMouseLoop(MouseButton.Right, ref _isRightClickLoopActive, ref _rightClickLoopCancellationTokenSource,
+                ref _rightClickLoopTask);
+        }
+    }
+
     private void OnClearActionsClick(object? sender, EventArgs e)
     {
         _actions.Clear();
+    }
+
+    private void StartMouseLoop(MouseButton button, ref bool isActive,
+        ref CancellationTokenSource? cancellationTokenSource, ref Task? loopTask)
+    {
+        if (isActive)
+        {
+            return;
+        }
+
+        if (targetProcessComboBox.SelectedItem is not TargetWindowItem target)
+        {
+            MessageBox.Show(this, "Please select a target window before starting a mouse click loop.", "Information",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        if (!TryGetLoopClickPoint(button, target.Handle, out var clickPoint))
+        {
+            MessageBox.Show(this,
+                "Unable to determine a click location. Record a mouse action or ensure the target window is visible.",
+                "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        cancellationTokenSource = new CancellationTokenSource();
+        var cancellationToken = cancellationTokenSource.Token;
+        isActive = true;
+        UpdateExecutionButtons();
+        UpdateLoopStatusMessage();
+
+        loopTask = Task.Run(async () =>
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    NativeMethods.SendMouseButton(target.Handle, clickPoint, button, true);
+
+                    if (MouseLoopPressDurationMilliseconds > 0)
+                    {
+                        await Task.Delay(MouseLoopPressDurationMilliseconds, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    NativeMethods.SendMouseButton(target.Handle, clickPoint, button, false);
+
+                    if (MouseLoopIntervalMilliseconds > 0)
+                    {
+                        await Task.Delay(MouseLoopIntervalMilliseconds, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when the loop is cancelled.
+            }
+        }, cancellationToken);
+    }
+
+    private async Task StopMouseLoopAsync(ref bool isActive, ref CancellationTokenSource? cancellationTokenSource,
+        ref Task? loopTask)
+    {
+        if (!isActive && loopTask == null)
+        {
+            return;
+        }
+
+        cancellationTokenSource?.Cancel();
+
+        if (loopTask != null)
+        {
+            try
+            {
+                await loopTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when the loop is cancelled.
+            }
+        }
+
+        cancellationTokenSource?.Dispose();
+        cancellationTokenSource = null;
+        loopTask = null;
+        isActive = false;
+
+        UpdateExecutionButtons();
+
+        if (_isLeftClickLoopActive || _isRightClickLoopActive)
+        {
+            UpdateLoopStatusMessage();
+        }
+        else
+        {
+            SetStatus("Idle");
+        }
+    }
+
+    private bool TryGetLoopClickPoint(MouseButton button, IntPtr windowHandle, out Point screenPoint)
+    {
+        for (var i = _actions.Count - 1; i >= 0; i--)
+        {
+            switch (_actions[i])
+            {
+                case MouseButtonAction buttonAction when buttonAction.Button == button:
+                    screenPoint = buttonAction.ScreenPosition;
+                    return true;
+                case MouseMoveAction moveAction:
+                    screenPoint = moveAction.ScreenPosition;
+                    return true;
+            }
+        }
+
+        if (NativeMethods.TryGetWindowCenter(windowHandle, out var center))
+        {
+            screenPoint = center;
+            return true;
+        }
+
+        screenPoint = Point.Empty;
+        return false;
+    }
+
+    private async Task StopAllAutomationAsync()
+    {
+        await StopPlaybackAsync();
+        await StopMouseLoopAsync(ref _isLeftClickLoopActive, ref _leftClickLoopCancellationTokenSource,
+            ref _leftClickLoopTask);
+        await StopMouseLoopAsync(ref _isRightClickLoopActive, ref _rightClickLoopCancellationTokenSource,
+            ref _rightClickLoopTask);
+    }
+
+    private void UpdateLoopStatusMessage()
+    {
+        if (_isRunning)
+        {
+            SetStatus("Playback running");
+            return;
+        }
+
+        if (_isLeftClickLoopActive && _isRightClickLoopActive)
+        {
+            SetStatus("Left and right click loops running");
+        }
+        else if (_isLeftClickLoopActive)
+        {
+            SetStatus("Left click loop running");
+        }
+        else if (_isRightClickLoopActive)
+        {
+            SetStatus("Right click loop running");
+        }
+        else
+        {
+            SetStatus("Idle");
+        }
     }
 
     private void StartPlayback()
@@ -466,7 +664,14 @@ public partial class MainForm : Form
         _playbackTask = null;
         _isRunning = false;
         UpdateExecutionButtons();
-        SetStatus("Idle");
+        if (_isLeftClickLoopActive || _isRightClickLoopActive)
+        {
+            UpdateLoopStatusMessage();
+        }
+        else
+        {
+            SetStatus("Idle");
+        }
     }
 
     private void UpdateExecutionButtons()
@@ -477,10 +682,15 @@ public partial class MainForm : Form
             return;
         }
 
+        var automationRunning = IsAnyAutomationRunning;
+
         startButton.Enabled = !_isRunning && _actions.Count > 0;
-        stopButton.Enabled = _isRunning;
-        toggleButton.Text = _isRunning ? "Stop" : "Start / Stop";
-        toggleButton.Enabled = _isRunning || _actions.Count > 0;
+        stopButton.Enabled = automationRunning;
+        toggleButton.Text = automationRunning ? "Stop" : "Start / Stop";
+        toggleButton.Enabled = automationRunning || _actions.Count > 0;
+
+        leftClickLoopButton.Text = _isLeftClickLoopActive ? "Stop Left Click Loop" : "Left Click Loop";
+        rightClickLoopButton.Text = _isRightClickLoopActive ? "Stop Right Click Loop" : "Right Click Loop";
     }
 
     private void OnInputActionRecorded(object? sender, InputActionRecordedEventArgs e)
@@ -649,12 +859,12 @@ public partial class MainForm : Form
                     StartPlayback();
                     break;
                 case StopHotkeyId:
-                    _ = StopPlaybackAsync();
+                    _ = StopAllAutomationAsync();
                     break;
                 case ToggleHotkeyId:
-                    if (_isRunning)
+                    if (IsAnyAutomationRunning)
                     {
-                        _ = StopPlaybackAsync();
+                        _ = StopAllAutomationAsync();
                     }
                     else
                     {
@@ -672,10 +882,10 @@ public partial class MainForm : Form
 
     private async void OnFormClosing(object? sender, FormClosingEventArgs e)
     {
-        if (_isRunning)
+        if (IsAnyAutomationRunning)
         {
             e.Cancel = true;
-            await StopPlaybackAsync();
+            await StopAllAutomationAsync();
             Close();
             return;
         }
