@@ -923,21 +923,35 @@ public partial class MainForm : Form
             return;
         }
 
-        var loopsArmed = false;
+        var loopsStarted = false;
 
         if (leftLoopToggleCheckBox.Checked)
         {
-            loopsArmed |= StartMouseLoop(MouseButton.Left, ref _isLeftClickLoopActive,
+            loopsStarted |= StartMouseLoop(MouseButton.Left, ref _isLeftClickLoopActive,
                 ref _leftClickLoopCancellationTokenSource, ref _leftClickLoopTask);
         }
 
         if (rightLoopToggleCheckBox.Checked)
         {
-            loopsArmed |= StartMouseLoop(MouseButton.Right, ref _isRightClickLoopActive,
+            loopsStarted |= StartMouseLoop(MouseButton.Right, ref _isRightClickLoopActive,
                 ref _rightClickLoopCancellationTokenSource, ref _rightClickLoopTask);
         }
 
-        if (!loopsArmed)
+        var playbackAttempted = false;
+
+        if (_actions.Count > 0)
+        {
+            playbackAttempted = true;
+            var wasRunning = _isRunning;
+            StartPlayback();
+
+            if (!wasRunning && _isRunning)
+            {
+                return;
+            }
+        }
+
+        if (!loopsStarted && !playbackAttempted)
         {
             StartPlayback();
         }
