@@ -378,8 +378,7 @@ public partial class MainForm : Form
     {
         if (_isLeftClickLoopActive)
         {
-            await StopMouseLoopAsync(ref _isLeftClickLoopActive, ref _leftClickLoopCancellationTokenSource,
-                ref _leftClickLoopTask);
+            await StopLeftClickLoopAsync();
         }
         else
         {
@@ -392,8 +391,7 @@ public partial class MainForm : Form
     {
         if (_isRightClickLoopActive)
         {
-            await StopMouseLoopAsync(ref _isRightClickLoopActive, ref _rightClickLoopCancellationTokenSource,
-                ref _rightClickLoopTask);
+            await StopRightClickLoopAsync();
         }
         else
         {
@@ -464,14 +462,56 @@ public partial class MainForm : Form
         }, cancellationToken);
     }
 
-    private async Task StopMouseLoopAsync(ref bool isActive, ref CancellationTokenSource? cancellationTokenSource,
-        ref Task? loopTask)
+    private async Task StopLeftClickLoopAsync()
     {
-        if (!isActive && loopTask == null)
+        if (!_isLeftClickLoopActive && _leftClickLoopTask == null)
         {
             return;
         }
 
+        await StopMouseLoopAsync(_leftClickLoopCancellationTokenSource, _leftClickLoopTask);
+
+        _leftClickLoopCancellationTokenSource?.Dispose();
+        _leftClickLoopCancellationTokenSource = null;
+        _leftClickLoopTask = null;
+        _isLeftClickLoopActive = false;
+
+        OnMouseLoopStopped();
+    }
+
+    private async Task StopRightClickLoopAsync()
+    {
+        if (!_isRightClickLoopActive && _rightClickLoopTask == null)
+        {
+            return;
+        }
+
+        await StopMouseLoopAsync(_rightClickLoopCancellationTokenSource, _rightClickLoopTask);
+
+        _rightClickLoopCancellationTokenSource?.Dispose();
+        _rightClickLoopCancellationTokenSource = null;
+        _rightClickLoopTask = null;
+        _isRightClickLoopActive = false;
+
+        OnMouseLoopStopped();
+    }
+
+    private void OnMouseLoopStopped()
+    {
+        UpdateExecutionButtons();
+
+        if (_isLeftClickLoopActive || _isRightClickLoopActive)
+        {
+            UpdateLoopStatusMessage();
+        }
+        else
+        {
+            SetStatus("Idle");
+        }
+    }
+
+    private static async Task StopMouseLoopAsync(CancellationTokenSource? cancellationTokenSource, Task? loopTask)
+    {
         cancellationTokenSource?.Cancel();
 
         if (loopTask != null)
@@ -484,22 +524,6 @@ public partial class MainForm : Form
             {
                 // Expected when the loop is cancelled.
             }
-        }
-
-        cancellationTokenSource?.Dispose();
-        cancellationTokenSource = null;
-        loopTask = null;
-        isActive = false;
-
-        UpdateExecutionButtons();
-
-        if (_isLeftClickLoopActive || _isRightClickLoopActive)
-        {
-            UpdateLoopStatusMessage();
-        }
-        else
-        {
-            SetStatus("Idle");
         }
     }
 
@@ -531,10 +555,8 @@ public partial class MainForm : Form
     private async Task StopAllAutomationAsync()
     {
         await StopPlaybackAsync();
-        await StopMouseLoopAsync(ref _isLeftClickLoopActive, ref _leftClickLoopCancellationTokenSource,
-            ref _leftClickLoopTask);
-        await StopMouseLoopAsync(ref _isRightClickLoopActive, ref _rightClickLoopCancellationTokenSource,
-            ref _rightClickLoopTask);
+        await StopLeftClickLoopAsync();
+        await StopRightClickLoopAsync();
     }
 
     private void UpdateLoopStatusMessage()
