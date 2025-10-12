@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,11 @@ namespace ClickerByProgram;
 
 public partial class MainForm : Form
 {
+    private const int StartHotkeyId = 1;
+    private const int StopHotkeyId = 2;
+    private const int ToggleHotkeyId = 3;
+    private const int WM_HOTKEY = 0x0312;
+
     private readonly BindingList<IInputAction> _actions = new();
     private readonly KeyboardRecorder _keyboardRecorder = new();
     private readonly MouseRecorder _mouseRecorder = new();
@@ -19,19 +25,71 @@ public partial class MainForm : Form
     private CancellationTokenSource? _playbackCancellationTokenSource;
     private Task? _playbackTask;
     private bool _isRunning;
+    private bool _suppressScriptPreviewUpdate;
+    private bool _suppressHotkeySelectionEvents;
+
+    private Keys _startHotkey = Keys.F7;
+    private Keys _stopHotkey = Keys.F8;
+    private Keys _toggleHotkey = Keys.F9;
+
+    private static readonly Keys[] HotkeyOptions =
+    {
+        Keys.F1, Keys.F2, Keys.F3, Keys.F4, Keys.F5, Keys.F6, Keys.F7, Keys.F8, Keys.F9, Keys.F10, Keys.F11, Keys.F12,
+        Keys.F13, Keys.F14, Keys.F15, Keys.F16, Keys.F17, Keys.F18, Keys.F19, Keys.F20, Keys.F21, Keys.F22, Keys.F23, Keys.F24,
+        Keys.D0, Keys.D1, Keys.D2, Keys.D3, Keys.D4, Keys.D5, Keys.D6, Keys.D7, Keys.D8, Keys.D9,
+        Keys.A, Keys.B, Keys.C, Keys.D, Keys.E, Keys.F, Keys.G, Keys.H, Keys.I, Keys.J, Keys.K, Keys.L, Keys.M,
+        Keys.N, Keys.O, Keys.P, Keys.Q, Keys.R, Keys.S, Keys.T, Keys.U, Keys.V, Keys.W, Keys.X, Keys.Y, Keys.Z,
+        Keys.NumPad0, Keys.NumPad1, Keys.NumPad2, Keys.NumPad3, Keys.NumPad4, Keys.NumPad5, Keys.NumPad6, Keys.NumPad7, Keys.NumPad8, Keys.NumPad9,
+        Keys.Space, Keys.Tab, Keys.Escape, Keys.Insert, Keys.Delete, Keys.Home, Keys.End, Keys.PageUp, Keys.PageDown,
+        Keys.Up, Keys.Down, Keys.Left, Keys.Right
+    };
 
     public MainForm()
     {
         InitializeComponent();
+        InitializeHotkeyDropdowns();
         actionsListBox.DataSource = _actions;
         actionsListBox.DisplayMember = nameof(IInputAction.Description);
-        _actions.ListChanged += (_, _) => UpdateExecutionButtons();
+        _actions.ListChanged += OnActionsListChanged;
 
         _keyboardRecorder.ActionRecorded += OnInputActionRecorded;
         _mouseRecorder.ActionRecorded += OnInputActionRecorded;
 
         Shown += (_, _) => RefreshProcessList();
         UpdateExecutionButtons();
+        RefreshScriptPreview();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+
+        if (!RegisterAllHotkeys())
+        {
+            MessageBox.Show(this,
+                "Unable to register the default hotkeys. They may already be in use by another application.",
+                "Hotkey registration", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        if (!RecreatingHandle)
+        {
+            UnregisterAllHotkeys();
+        }
+
+        base.OnHandleDestroyed(e);
+    }
+
+    private void OnActionsListChanged(object? sender, ListChangedEventArgs e)
+    {
+        UpdateExecutionButtons();
+
+        if (!_suppressScriptPreviewUpdate)
+        {
+            RefreshScriptPreview();
+        }
     }
 
     private void OnRefreshProcessesClick(object? sender, EventArgs e)
@@ -92,6 +150,27 @@ public partial class MainForm : Form
         }
 
         targetProcessComboBox.EndUpdate();
+    }
+
+    private void InitializeHotkeyDropdowns()
+    {
+        _suppressHotkeySelectionEvents = true;
+
+        try
+        {
+            var options = HotkeyOptions.Cast<object>().ToArray();
+            startHotkeyComboBox.Items.AddRange(options);
+            stopHotkeyComboBox.Items.AddRange(options);
+            toggleHotkeyComboBox.Items.AddRange(options);
+
+            startHotkeyComboBox.SelectedItem = _startHotkey;
+            stopHotkeyComboBox.SelectedItem = _stopHotkey;
+            toggleHotkeyComboBox.SelectedItem = _toggleHotkey;
+        }
+        finally
+        {
+            _suppressHotkeySelectionEvents = false;
+        }
     }
 
     private void OnRecordKeyboardClick(object? sender, EventArgs e)
@@ -160,6 +239,66 @@ public partial class MainForm : Form
         SetStatus("Mouse recording stopped");
     }
 
+    private void OnImportActionsClick(object? sender, EventArgs e)
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Filter = "Automation files (*.txt;*.json)|*.txt;*.json|All files (*.*)|*.*",
+            Title = "Import automation actions"
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            var content = File.ReadAllText(dialog.FileName);
+            scriptPreviewTextBox.Text = content;
+            var actions = ActionSerialization.Deserialize(content);
+            ReplaceActions(actions);
+            SetStatus($"Imported {actions.Count} actions");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Failed to import actions: {ex.Message}", "Import Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void OnExportActionsClick(object? sender, EventArgs e)
+    {
+        if (_actions.Count == 0)
+        {
+            MessageBox.Show(this, "There are no actions to export.", "Export", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "Automation files (*.txt)|*.txt|JSON files (*.json)|*.json|All files (*.*)|*.*",
+            FileName = "automation-actions.txt",
+            Title = "Export automation actions"
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            var serialized = ActionSerialization.Serialize(_actions);
+            File.WriteAllText(dialog.FileName, serialized);
+            scriptPreviewTextBox.Text = serialized;
+            SetStatus($"Exported {_actions.Count} actions");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Failed to export actions: {ex.Message}", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
     private void OnStartClick(object? sender, EventArgs e)
     {
         StartPlayback();
@@ -179,6 +318,45 @@ public partial class MainForm : Form
         else
         {
             StartPlayback();
+        }
+    }
+
+    private void OnStartHotkeySelectionChanged(object? sender, EventArgs e)
+    {
+        if (_suppressHotkeySelectionEvents)
+        {
+            return;
+        }
+
+        if (startHotkeyComboBox.SelectedItem is Keys key)
+        {
+            UpdateHotkeySelection(ref _startHotkey, key, startHotkeyComboBox, "start");
+        }
+    }
+
+    private void OnStopHotkeySelectionChanged(object? sender, EventArgs e)
+    {
+        if (_suppressHotkeySelectionEvents)
+        {
+            return;
+        }
+
+        if (stopHotkeyComboBox.SelectedItem is Keys key)
+        {
+            UpdateHotkeySelection(ref _stopHotkey, key, stopHotkeyComboBox, "stop");
+        }
+    }
+
+    private void OnToggleHotkeySelectionChanged(object? sender, EventArgs e)
+    {
+        if (_suppressHotkeySelectionEvents)
+        {
+            return;
+        }
+
+        if (toggleHotkeyComboBox.SelectedItem is Keys key)
+        {
+            UpdateHotkeySelection(ref _toggleHotkey, key, toggleHotkeyComboBox, "toggle");
         }
     }
 
@@ -323,6 +501,27 @@ public partial class MainForm : Form
         SetStatus($"Recorded: {action.Description}");
     }
 
+    private void ReplaceActions(IReadOnlyCollection<IInputAction> actions)
+    {
+        _suppressScriptPreviewUpdate = true;
+
+        try
+        {
+            _actions.Clear();
+
+            foreach (var action in actions)
+            {
+                _actions.Add(action);
+            }
+        }
+        finally
+        {
+            _suppressScriptPreviewUpdate = false;
+        }
+
+        RefreshScriptPreview();
+    }
+
     private void LogPlaybackEvent(string message)
     {
         SetStatus(message);
@@ -339,6 +538,138 @@ public partial class MainForm : Form
         statusLabel.Text = $"Status: {status}";
     }
 
+    private void RefreshScriptPreview()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(RefreshScriptPreview));
+            return;
+        }
+
+        var serialized = ActionSerialization.Serialize(_actions);
+        scriptPreviewTextBox.Text = serialized;
+    }
+
+    private void UpdateHotkeySelection(ref Keys currentKey, Keys newKey, ComboBox comboBox, string actionName)
+    {
+        if (newKey == currentKey)
+        {
+            return;
+        }
+
+        var previous = currentKey;
+        currentKey = newKey;
+
+        if (!RegisterAllHotkeys())
+        {
+            currentKey = previous;
+            _suppressHotkeySelectionEvents = true;
+            try
+            {
+                comboBox.SelectedItem = previous;
+            }
+            finally
+            {
+                _suppressHotkeySelectionEvents = false;
+            }
+
+            if (!RegisterAllHotkeys())
+            {
+                MessageBox.Show(this,
+                    "Unable to restore the previous hotkey configuration.",
+                    "Hotkey registration", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+
+            MessageBox.Show(this,
+                $"Unable to register the {actionName} hotkey '{newKey}'. The key might already be in use.",
+                "Hotkey registration", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    private bool RegisterAllHotkeys()
+    {
+        if (!IsHandleCreated)
+        {
+            return true;
+        }
+
+        UnregisterAllHotkeys();
+
+        if (!RegisterHotKeyInternal(StartHotkeyId, _startHotkey))
+        {
+            return false;
+        }
+
+        if (!RegisterHotKeyInternal(StopHotkeyId, _stopHotkey))
+        {
+            NativeMethods.UnregisterHotKey(Handle, StartHotkeyId);
+            return false;
+        }
+
+        if (!RegisterHotKeyInternal(ToggleHotkeyId, _toggleHotkey))
+        {
+            NativeMethods.UnregisterHotKey(Handle, StartHotkeyId);
+            NativeMethods.UnregisterHotKey(Handle, StopHotkeyId);
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool RegisterHotKeyInternal(int id, Keys key)
+    {
+        var keyCode = (uint)(key & Keys.KeyCode);
+        if (keyCode == 0)
+        {
+            return false;
+        }
+
+        return NativeMethods.RegisterHotKey(Handle, id, 0, keyCode);
+    }
+
+    private void UnregisterAllHotkeys()
+    {
+        if (!IsHandleCreated)
+        {
+            return;
+        }
+
+        NativeMethods.UnregisterHotKey(Handle, StartHotkeyId);
+        NativeMethods.UnregisterHotKey(Handle, StopHotkeyId);
+        NativeMethods.UnregisterHotKey(Handle, ToggleHotkeyId);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_HOTKEY)
+        {
+            switch (m.WParam.ToInt32())
+            {
+                case StartHotkeyId:
+                    StartPlayback();
+                    break;
+                case StopHotkeyId:
+                    _ = StopPlaybackAsync();
+                    break;
+                case ToggleHotkeyId:
+                    if (_isRunning)
+                    {
+                        _ = StopPlaybackAsync();
+                    }
+                    else
+                    {
+                        StartPlayback();
+                    }
+
+                    break;
+            }
+
+            return;
+        }
+
+        base.WndProc(ref m);
+    }
+
     private async void OnFormClosing(object? sender, FormClosingEventArgs e)
     {
         if (_isRunning)
@@ -349,6 +680,7 @@ public partial class MainForm : Form
             return;
         }
 
+        UnregisterAllHotkeys();
         _keyboardRecorder.Dispose();
         _mouseRecorder.Dispose();
     }

@@ -185,6 +185,12 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = false)]
     private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct KbdLlHookStruct
     {
