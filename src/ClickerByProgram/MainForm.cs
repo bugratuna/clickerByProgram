@@ -41,9 +41,6 @@ public partial class MainForm : Form
     private Keys _stopHotkey = Keys.F8;
     private Keys _toggleHotkey = Keys.F9;
 
-    private const int MouseLoopIntervalMilliseconds = 150;
-    private const int MouseLoopPressDurationMilliseconds = 50;
-
     private bool IsAnyAutomationRunning => _isRunning || _isLeftClickLoopActive || _isRightClickLoopActive;
 
     private static readonly Keys[] HotkeyOptions =
@@ -436,30 +433,21 @@ public partial class MainForm : Form
 
         loopTask = Task.Run(async () =>
         {
+            NativeMethods.SendMouseButton(target.Handle, clickPoint, button, true);
+
             try
             {
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    NativeMethods.SendMouseButton(target.Handle, clickPoint, button, true);
-
-                    if (MouseLoopPressDurationMilliseconds > 0)
-                    {
-                        await Task.Delay(MouseLoopPressDurationMilliseconds, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    NativeMethods.SendMouseButton(target.Handle, clickPoint, button, false);
-
-                    if (MouseLoopIntervalMilliseconds > 0)
-                    {
-                        await Task.Delay(MouseLoopIntervalMilliseconds, cancellationToken).ConfigureAwait(false);
-                    }
-                }
+                await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
                 // Expected when the loop is cancelled.
             }
-        }, cancellationToken);
+            finally
+            {
+                NativeMethods.SendMouseButton(target.Handle, clickPoint, button, false);
+            }
+        });
     }
 
     private async Task StopLeftClickLoopAsync()
@@ -569,15 +557,15 @@ public partial class MainForm : Form
 
         if (_isLeftClickLoopActive && _isRightClickLoopActive)
         {
-            SetStatus("Left and right click loops running");
+            SetStatus("Left and right click holds active");
         }
         else if (_isLeftClickLoopActive)
         {
-            SetStatus("Left click loop running");
+            SetStatus("Left click hold active");
         }
         else if (_isRightClickLoopActive)
         {
-            SetStatus("Right click loop running");
+            SetStatus("Right click hold active");
         }
         else
         {
